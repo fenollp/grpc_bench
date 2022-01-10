@@ -2,7 +2,7 @@ FROM docker.io/library/pypy:3@sha256:80250e1b26bea4e3c8e2a99b0e9a46798959a9cea59
 
 WORKDIR /app
 RUN python -m pip install --upgrade pip
-RUN python -m pip install asyncio grpcio==1.26.0 grpcio-tools==1.26.0
+RUN python -m pip install asyncio grpcio==1.26.0 grpcio-tools==1.26.0 # https://github.com/grpc/grpc/issues/4221#issuecomment-735352531
 COPY proto proto
 RUN python -m grpc_tools.protoc -I/app/proto/helloworld --python_out=. --grpc_python_out=. helloworld.proto
 COPY python_async_pypy_grpc_bench .
