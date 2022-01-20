@@ -29,7 +29,7 @@ export GRPC_IMAGE_NAME="${GRPC_IMAGE_NAME:-grpc_bench}"
 # export GRPC_CLIENT_QPS
 
 wait_on_tcp50051() {
-	for ((i=1;i<=10*5*60;i++)); do
+	for ((i=1;i<=10*30;i++)); do
 		nc -z localhost 50051 && return 0
 		sleep .1
 	done
@@ -64,7 +64,23 @@ for benchmark in ${BENCHMARKS_TO_RUN}; do
 
 	printf 'Waiting for server to come up... '
 	if ! wait_on_tcp50051; then
+		echo
+		echo
+		docker ps -a || true
+		docker logs --details "${NAME}" || true
+		echo
+		echo
 		echo 'server unresponsive!'
+		docker run \
+			--name "${NAME}" \
+			--rm \
+			--cpus "${GRPC_SERVER_CPUS}" \
+			--memory "${GRPC_SERVER_RAM}" \
+			-e GRPC_SERVER_CPUS \
+			-e GRPC_SERVER_RAM \
+			--network=host \
+			--tty \
+			"$GRPC_IMAGE_NAME:${NAME}-$GRPC_REQUEST_SCENARIO"
 		exit 1
 	fi
 	echo 'ready.'
