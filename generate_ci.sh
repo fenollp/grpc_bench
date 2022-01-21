@@ -25,9 +25,16 @@ jobs:
 
 EOF
 
-setup() {
-    local bench="$1"; shift
+while read -r bench; do
+    bench=${bench##./}
+
+    # Build & benchmark & cache branch-specific image for scenario
+
     cat <<EOF
+  $bench:
+    runs-on: ubuntu-latest
+    needs: meta-check
+    steps:
     - name: Checkout
       uses: actions/checkout@v2
 
@@ -36,30 +43,13 @@ setup() {
       uses: actions/cache@v1
       with:
         path: /tmp/docker-registry
-        key: docker-registry-\${{ hashFiles('proto/', '$bench/') }}
+        key: registry-\${{ hashFiles('proto/', '$bench/') }}
 
-EOF
-}
-
-while read -r bench; do
-    bench=${bench##./}
-
-    # Build & cache branch-specific image for scenario
-
-    cat <<EOF
-  build-${bench//_bench}:
-    runs-on: ubuntu-latest
-    needs: meta-check
-    steps:
-EOF
-    setup "$bench"
-    # On cache hit: do nothing. Improve with: https://github.com/actions/runner/issues/662
-    cat <<EOF
-    - if: steps.cache.outputs.cache-hit != 'true'
-      name: Setup local Docker registry
+    - name: Setup local Docker registry
       run: |
         docker run -d -p 5000:5000 --restart=always --name registry -v /tmp/docker-registry:/var/lib/registry registry:2
         while ! nc -z localhost 5000; do sleep .1; done
+      timeout-minutes: 1
 
     - if: steps.cache.outputs.cache-hit != 'true'
       name: Log in to GitHub Container Registry
@@ -79,41 +69,13 @@ EOF
       env:
         SLUG: \${{ github.repository }}
 
-    - if: steps.cache.outputs.cache-hit != 'true'
-      name: Build $bench
+    - name: Build $bench
       run: ./build.sh $bench
 
-    - if: steps.cache.outputs.cache-hit != 'true'
-      name: Ensure local registry has most recent image
+    - name: Ensure local registry has most recent image
       run: |
         docker push \$GRPC_IMAGE_NAME:$bench-\$GRPC_REQUEST_SCENARIO
         du -sh /tmp/docker-registry
-
-
-EOF
-
-    # Benchmark branch-specific image for scenario
-
-    cat <<EOF
-  bench-${bench//_bench}:
-    runs-on: ubuntu-latest
-    needs: build-${bench//_bench}
-    steps:
-EOF
-    setup "$bench"
-    cat <<EOF
-    - if: steps.cache.outputs.cache-hit != 'true'
-      name: Fail job on cache miss
-      run: 'false'
-
-    - name: Setup local Docker registry
-      run: |
-        docker run -d -p 5000:5000 --restart=always --name registry -v /tmp/docker-registry:/var/lib/registry registry:2
-        while ! nc -z localhost 5000; do sleep .1; done
-
-    - name: Pull image from local registry
-      run: docker pull \$GRPC_IMAGE_NAME:$bench-\$GRPC_REQUEST_SCENARIO
-      timeout-minutes: 2
 
     - name: Benchmark $bench
       run: GRPC_BENCHMARK_DURATION=30s ./bench.sh $bench
