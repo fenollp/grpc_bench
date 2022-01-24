@@ -36,6 +36,37 @@ jobs:
       env:
         SLUG: \${{ github.repository }}
 
+  changed:
+    runs-on: ubuntu-latest
+    needs: [meta-check]
+    outputs:
+      files: \${{ steps.finder.outputs.all_changed_and_modified_files }}
+      base: \${{ steps.base.outputs.base }}
+    steps:
+    - name: Deep checkout
+      uses: actions/checkout@v2
+      with:
+        fetch-depth: 0
+
+    - name: Get changed files
+      id: finder
+      uses: tj-actions/changed-files@v13.1
+
+    - name: Output whether base changed
+      id: base
+      run: echo "::set-output name=base::\$BASE"
+      env:
+        BASE: >-
+          \${{
+          contains(steps.finder.outputs.all_changed_and_modified_files, 'analyze.sh')        ||
+          contains(steps.finder.outputs.all_changed_and_modified_files, 'bench.sh')          ||
+          contains(steps.finder.outputs.all_changed_and_modified_files, 'build.sh')          ||
+          contains(steps.finder.outputs.all_changed_and_modified_files, 'clean.sh')          ||
+          contains(steps.finder.outputs.all_changed_and_modified_files, 'collect_stats.sh')  ||
+          contains(steps.finder.outputs.all_changed_and_modified_files, 'generate_ci.sh')    ||
+          contains(steps.finder.outputs.all_changed_and_modified_files, 'proto/')            ||
+          contains(steps.finder.outputs.all_changed_and_modified_files, 'setup_scenario.sh') }}
+
 EOF
 
 while read -r bench; do
@@ -44,7 +75,10 @@ while read -r bench; do
     cat <<EOF
   $bench:
     runs-on: ubuntu-latest
-    needs: [set-image-name]
+    needs:
+    - set-image-name
+    - changed
+    if: \${{ needs.changed.outputs.base || contains(needs.changed.outputs.files, '$bench/') }}
     steps:
     - name: Checkout
       uses: actions/checkout@v2
