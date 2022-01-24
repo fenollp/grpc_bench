@@ -22,6 +22,20 @@ jobs:
     - run: ./generate_ci.sh | tee .github/workflows/build.yml
     - run: git --no-pager diff --exit-code
 
+  set-image-name:
+    runs-on: ubuntu-latest
+    needs: [meta-check]
+    outputs:
+      name: \${{ steps.namer.outputs.name }}
+    steps:
+    - name: Set GRPC_IMAGE_NAME
+      id: namer
+      run: |
+        SLUG=\${SLUG,,} # Lowercase
+        echo "::set-output name=name::ghcr.io/\$SLUG"
+      env:
+        SLUG: \${{ github.repository }}
+
 EOF
 
 while read -r bench; do
@@ -30,25 +44,21 @@ while read -r bench; do
     cat <<EOF
   $bench:
     runs-on: ubuntu-latest
-    needs: meta-check
+    needs: [set-image-name]
     steps:
     - name: Checkout
       uses: actions/checkout@v2
 
-    - name: Set GRPC_IMAGE_NAME
-      run: |
-        SLUG=\${SLUG,,} # Lowercase
-        echo "GRPC_IMAGE_NAME=ghcr.io/\$SLUG" >>\$GITHUB_ENV
-      env:
-        SLUG: \${{ github.repository }}
-
     - name: Build $bench
       run: ./build.sh $bench
+      env:
+        GRPC_IMAGE_NAME: \${{ needs.set-image-name.outputs.name }}
 
     - name: Benchmark $bench
       run: ./bench.sh $bench
       env:
         GRPC_BENCHMARK_DURATION: 30s
+        GRPC_IMAGE_NAME: \${{ needs.set-image-name.outputs.name }}
 
     - if: \${{ github.ref == 'refs/heads/master' }}
       name: Log in to GitHub Container Registry
@@ -61,6 +71,8 @@ while read -r bench; do
     - if: \${{ github.ref == 'refs/heads/master' }}
       name: If on master push image to GHCR
       run: docker push \$GRPC_IMAGE_NAME:$bench-$GRPC_REQUEST_SCENARIO
+      env:
+        GRPC_IMAGE_NAME: \${{ needs.set-image-name.outputs.name }}
 
 EOF
 
